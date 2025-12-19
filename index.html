@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1e3a8a">
+
+    <title>APEX AUTO SERVICE - Audit</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* --- STYLES --- */
+        body { 
+            overscroll-behavior-y: none; 
+            -webkit-tap-highlight-color: transparent; 
+            padding-bottom: calc(6rem + env(safe-area-inset-bottom)); 
+        }
+
+        /* Animations Zone Détails */
+        .details-section { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            max-height: 0; 
+            overflow: hidden; 
+            opacity: 0; 
+        }
+        .details-section.visible { 
+            max-height: 1200px; 
+            opacity: 1; 
+            margin-top: 0.5rem; 
+            padding-top: 0.5rem; 
+            border-top: 1px dashed #cbd5e1; 
+        }
+        
+        .view-section { display: none; animation: fadeIn 0.3s ease-out; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        input, select, textarea { font-size: 16px !important; }
+
+        /* --- IMPRESSION (RAPPORT) --- */
+        @media print {
+            body { background: white; padding: 0; }
+            header, .no-print, #view-dashboard, #view-form { display: none !important; }
+            #view-report { display: block !important; padding: 0; }
+            .print-newpage { page-break-before: always; }
+            .print-break { page-break-inside: avoid; }
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            .legal-text { font-size: 7px; line-height: 1.1; text-align: justify; color: #64748b; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <!-- En-tête -->
+    <header class="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-50 no-print pt-[env(safe-area-inset-top)]">
+        <div class="max-w-3xl mx-auto flex justify-between items-center mt-2">
+            <h1 class="text-lg font-bold flex items-center gap-2 cursor-pointer active:opacity-70" onclick="showDashboard()">
+                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO
+            </h1>
+            <div class="flex gap-2">
+                <button onclick="showDashboard()" class="text-sm bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-blue-700 active:scale-95 transition">
+                    <i class="ph ph-list-dashes"></i>
+                </button>
+                <button onclick="createNewExpertise()" class="text-sm bg-green-600 hover:bg-green-500 px-3 py-2 rounded-lg flex items-center gap-1 font-bold shadow-md active:scale-95 transition">
+                    <i class="ph ph-plus text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto p-3 space-y-4">
+
+        <!-- VUE 1 : DASHBOARD -->
+        <div id="view-dashboard" class="view-section active no-print">
+            <div class="flex justify-between items-end mb-4 px-1">
+                <h2 class="text-xl font-bold text-slate-700">Mes Audits</h2>
+                <span id="folderCount" class="text-xs font-bold bg-white border px-2 py-1 rounded-full text-slate-600 shadow-sm">...</span>
+            </div>
+            <div class="mb-4 relative">
+                <i class="ph ph-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-xl"></i>
+                <input type="search" id="searchInput" onkeyup="updateDashboard()" placeholder="Rechercher..." class="w-full pl-12 pr-4 py-3.5 border-0 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-lg bg-white">
+            </div>
+            <div id="foldersList" class="grid gap-3 pb-20">
+                <p class="text-center text-slate-400 mt-10">Initialisation...</p>
+            </div>
+        </div>
+
+        <!-- VUE 2 : FORMULAIRE -->
+        <div id="view-form" class="view-section no-print">
+            <div class="flex items-center justify-between mb-4 bg-white p-3 rounded-xl shadow-sm border border-slate-100 sticky top-20 z-40">
+                <button onclick="showDashboard()" type="button" class="text-slate-500 hover:text-blue-700 flex items-center gap-1 font-medium active:scale-95 transition">
+                    <i class="ph ph-arrow-left text-xl"></i> Retour
+                </button>
+                <span id="formModeTitle" class="font-bold text-blue-800">Inspection</span>
+                <button id="btnReport" type="button" onclick="generateReport()" class="hidden text-sm bg-blue-50 text-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 font-bold active:scale-95 transition border border-blue-100">
+                    <i class="ph ph-printer text-lg"></i> PDF
+                </button>
+            </div>
+
+            <input type="hidden" id="expertiseId">
+            <form id="expertiseForm" onsubmit="event.preventDefault(); submitExpertise();">
+                <!-- Info Véhicule -->
+                <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-4">
+                    <h2 class="text-lg font-bold mb-4 text-slate-700 flex items-center gap-2 border-b pb-2">
+                        <i class="ph ph-identification-card text-blue-600 text-xl"></i> Infos Véhicule
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Client</label><input type="text" id="clientName" required class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Nom Prénom"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Immatriculation</label><input type="text" id="plate" required autocapitalize="characters" class="w-full p-3.5 border border-slate-300 rounded-xl uppercase font-mono bg-slate-50 focus:border-blue-500 outline-none" placeholder="XX-000-XX"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Modèle</label><input type="text" id="model" required class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Ex: Audi A3"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Kilométrage</label><input type="number" id="km" inputmode="numeric" class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Ex: 150000"></div>
+                    </div>
+                </section>
+
+                <!-- Sections de contrôle générées dynamiquement -->
+                <div id="form-sections-container"></div>
+
+                <!-- Photos Générales -->
+                <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-24">
+                    <h2 class="text-lg font-bold mb-4 text-slate-700 flex items-center gap-2 border-b pb-2"><i class="ph ph-images text-blue-600 text-xl"></i> Photos Générales</h2>
+                    <p class="text-sm text-slate-500 mb-3">Ajoutez ici les photos globales (3/4 Avant, Arrière, Intérieur général...).</p>
+                    <div id="globalPhotoList" class="grid grid-cols-2 gap-3 mb-4"></div>
+                    <button type="button" onclick="triggerGlobalPhoto()" class="w-full py-4 bg-slate-50 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-100 transition active:scale-[0.98]">
+                        <i class="ph ph-camera-plus text-2xl"></i><span class="font-medium">Ajouter Photo Globale</span>
+                    </button>
+                </section>
+
+                <!-- Actions Bas de page -->
+                <section class="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] md:relative md:bg-transparent md:border-none md:shadow-none md:p-0">
+                    <div class="max-w-3xl mx-auto flex flex-col gap-2">
+                        <button type="submit" id="btnSave" class="w-full bg-blue-900 text-white font-bold py-4 rounded-xl shadow-lg active:scale-[0.98] transition flex items-center justify-center gap-2 text-lg">
+                            <i class="ph ph-floppy-disk text-xl"></i> <span id="saveBtnText">Enregistrer</span>
+                        </button>
+                        <button type="button" id="btnDelete" onclick="deleteExpertise()" class="hidden w-full bg-red-50 text-red-600 font-bold py-3 rounded-xl active:scale-[0.98] transition flex items-center justify-center gap-2 border border-red-100">
+                            <i class="ph ph-trash text-lg"></i> Supprimer
+                        </button>
+                    </div>
+                </section>
+            </form>
+        </div>
+
+        <!-- VUE 3 : RAPPORT -->
+        <div id="view-report" class="hidden bg-white min-h-screen"></div>
+    </main>
+
+    <input type="file" id="cameraInput" accept="image/*" class="hidden" onchange="handlePhotoUpload(this)">
+
+    <script>
+        // ================= CONFIGURATION =================
+        const SUPABASE_URL = 'https://fafxadjkjfrsjiacnjuj.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_EJE62_dCVr97qb7JbaB9VQ_svEdaG0-'; 
+        const STORAGE_BUCKET = 'garage';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // ================= COMPRESSION D'IMAGES =================
+        const compressImage = async (file, { quality = 0.6, type = 'image/jpeg' } = {}) => {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.src = URL.createObjectURL(file);
+                image.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Max 1280px pour bonne lisibilité sans poids excessif
+                    const maxWidth = 1280;
+                    let width = image.width;
+                    let height = image.height;
+
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(image, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        if (!blob) { reject(new Error('Erreur compression')); return; }
+                        const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                            type: type,
+                            lastModified: Date.now(),
+                        });
+                        resolve(newFile);
+                    }, type, quality);
+                };
+                image.onerror = (error) => reject(error);
+            });
+        };
+
+        // ================= CHECKLIST DÉTAILLÉE =================
+        const checkListConfig = {
+            ext: { title: "Extérieur & Carrosserie", icon: "car", items: [
+                { id: 'ext_carrosserie', label: 'État Carrosserie', sub: 'Rayures, bosses, enfoncements' },
+                { id: 'ext_peinture', label: 'Peinture', sub: 'Différence de teinte, vernis écaillé' },
+                { id: 'ext_align', label: 'Alignements', sub: 'Jeu portières/capot/coffre' },
+                { id: 'ext_vitrage', label: 'Vitrage', sub: 'Pare-brise, vitres latérales, lunette arrière' },
+                { id: 'ext_optiques', label: 'Optiques & Feux', sub: 'Fissures, humidité, fonctionnement' },
+                { id: 'ext_retros', label: 'Rétroviseurs', sub: 'Coques, miroirs, rabattement' },
+                { id: 'ext_pneus_av', label: 'Pneus Avant', sub: 'Usure, marque, DOT' },
+                { id: 'ext_pneus_ar', label: 'Pneus Arrière', sub: 'Usure, marque, DOT' },
+                { id: 'ext_jantes', label: 'Jantes / Enjoliveurs', sub: 'Frottements, déformations' }
+            ]},
+            int: { title: "Intérieur & Habitacle", icon: "armchair", items: [
+                { id: 'int_sieges', label: 'Sellerie & Sièges', sub: 'Déchirures, tâches, réglages' },
+                { id: 'int_tableau', label: 'Tableau de bord', sub: 'État plastiques, boîte à gants' },
+                { id: 'int_volant', label: 'Volant & Commandes', sub: 'Usure cuir, boutons' },
+                { id: 'int_ciel', label: 'Ciel de toit', sub: 'Décollement, tâches' },
+                { id: 'int_tapis', label: 'Moquettes & Tapis', sub: 'Humidité, usure' },
+                { id: 'int_odeur', label: 'Odeurs', sub: 'Tabac, humidité, chien' },
+                { id: 'int_coffre', label: 'Coffre', sub: 'Vérins, propreté, roue de secours' }
+            ]},
+            opt: { title: "Options & Équipements", icon: "faders", items: [
+                { id: 'opt_clim', label: 'Climatisation', sub: 'Production froid/chaud, ventilation' },
+                { id: 'opt_vitres', label: 'Vitres Électriques', sub: 'Test des 4 vitres (montée/descente)' },
+                { id: 'opt_audio', label: 'Audio & Radio', sub: 'Haut-parleurs, Bluetooth' },
+                { id: 'opt_gps', label: 'GPS / Écran', sub: 'Fonctionnement tactile, affichage' },
+                { id: 'opt_radar', label: 'Aide au Stationnement', sub: 'Radars AV/AR, Caméra de recul' },
+                { id: 'opt_regulateur', label: 'Régulateur / Limiteur', sub: 'Activation des commandes' },
+                { id: 'opt_toit', label: 'Toit Ouvrant / Pano', sub: 'Mécanisme, étanchéité' },
+                { id: 'opt_voyants', label: 'Voyants TDB', sub: 'Check moteur, Airbag, ABS (au contact)' }
+            ]},
+            mec: { title: "Mécanique & Moteur", icon: "engine", items: [
+                { id: 'mec_fluides', label: 'Niveaux Fluides', sub: 'Huile, LDR, Frein (visuel)' },
+                { id: 'mec_fuites', label: 'Étanchéité Moteur', sub: 'Traces d\'huile ou suintements visibles' },
+                { id: 'mec_courroies', label: 'Courroies', sub: 'État visuel courroie accessoires' },
+                { id: 'mec_demarrage', label: 'Démarrage', sub: 'À froid / À chaud (bruit suspect ?)' },
+                { id: 'mec_fumee', label: 'Échappement', sub: 'Fumée (Noire/Bleue/Blanche) ?' }
+            ]},
+            route: { title: "Essai Routier", icon: "road-horizon", items: [
+                { id: 'ess_embrayage', label: 'Embrayage / Boîte', sub: 'Passage vitesses, patinage' },
+                { id: 'ess_puissance', label: 'Moteur & Puissance', sub: 'Accélération, Turbo, à-coups' },
+                { id: 'ess_freinage', label: 'Freinage', sub: 'Efficacité, voiture reste en ligne' },
+                { id: 'ess_direction', label: 'Direction', sub: 'Jeu, points durs, tremblements' },
+                { id: 'ess_bruits', label: 'Bruits Roulement', sub: 'Suspensions, roulements, claquements' }
+            ]},
+            adm: { title: "Administratif", icon: "file-text", items: [
+                { id: 'adm_cg', label: 'Carte Grise', sub: 'Présente, au nom du vendeur' },
+                { id: 'adm_vin', label: 'Numéro Série (VIN)', sub: 'Concordance CG / Châssis' },
+                { id: 'adm_ct', label: 'Contrôle Technique', sub: 'Moins de 6 mois, procès verbal' },
+                { id: 'adm_entretien', label: 'Historique Entretien', sub: 'Carnet, Factures disponibles' },
+                { id: 'adm_cles', label: 'Clés', sub: 'Double des clés présent et fonctionnel' }
+            ]}
+        };
+
+        // Données globales
+        let folders = [];
+        let globalPhotos = [];
+        let itemPhotos = {};
+        let currentPhotoTarget = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            generateFormFields();
+            loadFolders();
+        });
+
+        // ================= GÉNÉRATION UI =================
+        function generateFormFields() {
+            const container = document.getElementById('form-sections-container');
+            container.innerHTML = '';
+            
+            for (const [key, section] of Object.entries(checkListConfig)) {
+                let html = `
+                <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 control-section mb-4">
+                    <h2 class="text-lg font-bold mb-4 text-slate-700 flex items-center gap-2 border-b pb-2">
+                        <i class="ph ph-${section.icon} text-blue-600 text-xl"></i> ${section.title}
+                    </h2>
+                    <div class="space-y-3">`;
+                
+                section.items.forEach(item => {
+                    html += `
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 control-item" data-id="${item.id}" data-label="${item.label}">
+                        
+                        <!-- Ligne Principale -->
+                        <div class="flex justify-between items-start mb-1">
+                            <div class="flex-1 pr-2">
+                                <span class="font-bold text-slate-700 block text-sm sm:text-base">${item.label}</span>
+                                <span class="text-xs text-slate-500 block leading-tight mt-0.5">${item.sub}</span>
+                            </div>
+                            
+                            <div class="flex gap-2 shrink-0">
+                                <label class="cursor-pointer relative group">
+                                    <input type="radio" name="${item.id}" value="ok" class="hidden peer" onchange="handleStatusChange(this)">
+                                    <div class="w-10 h-10 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-300 peer-checked:bg-green-600 peer-checked:text-white peer-checked:border-green-600 transition shadow-sm">
+                                        <i class="ph ph-check text-xl font-bold"></i>
+                                    </div>
+                                </label>
+                                
+                                <label class="cursor-pointer relative group">
+                                    <input type="radio" name="${item.id}" value="nok" class="hidden peer" onchange="handleStatusChange(this)">
+                                    <div class="w-10 h-10 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-300 peer-checked:bg-red-600 peer-checked:text-white peer-checked:border-red-600 transition shadow-sm">
+                                        <i class="ph ph-x text-xl font-bold"></i>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="manual-add-btn text-right hidden">
+                            <button type="button" onclick="toggleDetails(this)" class="text-xs text-blue-600 font-medium hover:underline flex items-center justify-end gap-1 ml-auto py-1">
+                                <i class="ph ph-note-pencil"></i> Ajouter note / photo
+                            </button>
+                        </div>
+
+                        <div class="details-section">
+                            <div class="bg-white p-3 rounded-lg border border-slate-200 mt-2">
+                                <textarea class="w-full text-sm p-3 border border-slate-200 rounded-lg bg-slate-50 mb-2 focus:ring-2 focus:ring-blue-200 outline-none transition" rows="2" placeholder="Commentaire / Observation..."></textarea>
+                                <div class="photos-container grid grid-cols-2 gap-2 mb-2"></div>
+                                <button type="button" onclick="triggerItemPhoto(this)" class="text-xs flex items-center justify-center gap-2 text-slate-600 font-bold bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg shadow-sm active:bg-slate-200 w-full transition">
+                                    <i class="ph ph-camera-plus text-lg"></i> Ajouter Photo
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>`;
+                });
+                html += `</div></section>`;
+                container.insertAdjacentHTML('beforeend', html);
+            }
+        }
+
+        // ================= LOGIQUE UI =================
+        function handleStatusChange(radio) {
+            const container = radio.closest('.control-item');
+            const detailsSection = container.querySelector('.details-section');
+            const manualBtn = container.querySelector('.manual-add-btn');
+            const textArea = container.querySelector('textarea');
+
+            if (radio.value === 'nok') {
+                detailsSection.classList.add('visible');
+                manualBtn.classList.add('hidden');
+                container.classList.add('border-red-200', 'bg-red-50');
+                container.classList.remove('bg-slate-50', 'border-slate-200');
+                textArea.placeholder = "Décrivez le défaut...";
+            } else {
+                detailsSection.classList.remove('visible');
+                manualBtn.classList.remove('hidden');
+                container.classList.remove('border-red-200', 'bg-red-50');
+                container.classList.add('bg-slate-50', 'border-slate-200');
+                textArea.placeholder = "Observation positive (ex: Pneus neufs)...";
+            }
+        }
+
+        function toggleDetails(btn) {
+            const section = btn.closest('.control-item').querySelector('.details-section');
+            section.classList.toggle('visible');
+        }
+
+        // ================= NAVIGATION =================
+        function showDashboard() {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-dashboard').classList.add('active');
+            loadFolders();
+            window.scrollTo(0,0);
+        }
+        function createNewExpertise() {
+            resetForm();
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById('view-form').classList.add('active');
+            document.getElementById('btnReport').classList.add('hidden');
+            document.getElementById('btnDelete').classList.add('hidden');
+            window.scrollTo(0,0);
+        }
+
+        // ================= DATA (CRUD) =================
+        async function loadFolders() {
+            const listEl = document.getElementById('foldersList');
+            listEl.innerHTML = '<div class="flex justify-center py-10"><div class="loader"></div></div>';
+            try {
+                const { data, error } = await sb.from('expertises').select('*').order('created_at', { ascending: false });
+                if (!error) { folders = data; updateDashboard(); } else { throw error; }
+            } catch(e) { listEl.innerHTML = `<p class="text-center text-red-500 py-10">Erreur réseau.</p>`; }
+        }
+
+        function updateDashboard() {
+            const listEl = document.getElementById('foldersList');
+            const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filtered = folders.filter(f => (f.client_nom||'').toLowerCase().includes(searchVal) || (f.immatriculation||'').toLowerCase().includes(searchVal));
+            document.getElementById('folderCount').innerText = filtered.length;
+            listEl.innerHTML = '';
+            if (filtered.length === 0) { listEl.innerHTML = `<div class="text-center text-slate-400 py-10 flex flex-col items-center"><i class="ph ph-folder-dashed text-4xl mb-2 opacity-50"></i>Aucun dossier trouvé.</div>`; return; }
+            filtered.forEach(f => {
+                let nokCount = f.checklist ? Object.values(f.checklist).filter(i => i.status === 'nok').length : 0;
+                let badge = nokCount === 0 
+                    ? `<span class="bg-green-100 text-green-800 px-2 py-1 rounded-md text-xs font-bold border border-green-200">Perfect</span>` 
+                    : `<span class="bg-red-100 text-red-800 px-2 py-1 rounded-md text-xs font-bold border border-red-200">${nokCount} Défauts</span>`;
+                const card = document.createElement('div');
+                card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-100 active:border-blue-300 active:bg-slate-50 cursor-pointer flex justify-between items-center transition";
+                card.onclick = () => loadDetails(f.id);
+                card.innerHTML = `<div><div class="flex items-center gap-2 font-black text-lg text-slate-800">${f.immatriculation || '---'} ${badge}</div><div class="text-slate-600 font-medium">${f.vehicule_modele}</div><div class="text-slate-400 text-xs mt-1 flex items-center gap-1"><i class="ph ph-user"></i> ${f.client_nom} &bull; ${new Date(f.created_at).toLocaleDateString()}</div></div><i class="ph ph-caret-right text-slate-300 text-2xl"></i>`;
+                listEl.appendChild(card);
+            });
+        }
+
+        async function submitExpertise() {
+            const btn = document.getElementById('btnSave'); btn.disabled = true; 
+            const originalText = document.getElementById('saveBtnText').innerText;
+            document.getElementById('saveBtnText').innerText = "Sauvegarde...";
+            try {
+                const checklistData = {};
+                document.querySelectorAll('.control-item').forEach(div => {
+                    const id = div.dataset.id;
+                    const checked = div.querySelector(`input[name="${id}"]:checked`);
+                    if(checked) {
+                        checklistData[id] = { 
+                            status: checked.value, 
+                            comment: div.querySelector('textarea').value, 
+                            photos: itemPhotos[id] || [] 
+                        };
+                    }
+                });
+                const payload = {
+                    client_nom: document.getElementById('clientName').value,
+                    immatriculation: document.getElementById('plate').value,
+                    vehicule_modele: document.getElementById('model').value,
+                    km: document.getElementById('km').value,
+                    checklist: checklistData,
+                    photo_url: globalPhotos[0] || null
+                };
+                const id = document.getElementById('expertiseId').value;
+                const { error } = id ? await sb.from('expertises').update(payload).eq('id', id) : await sb.from('expertises').insert([payload]);
+                if(error) throw error;
+                btn.classList.remove('bg-blue-900'); btn.classList.add('bg-green-600');
+                document.getElementById('saveBtnText').innerText = "Succès !";
+                setTimeout(() => { btn.classList.add('bg-blue-900'); btn.classList.remove('bg-green-600'); document.getElementById('saveBtnText').innerText = originalText; showDashboard(); }, 1000);
+            } catch (e) { alert("Erreur: " + e.message); btn.disabled = false; document.getElementById('saveBtnText').innerText = originalText; } 
+        }
+
+        async function loadDetails(id) {
+            try {
+                const { data, error } = await sb.from('expertises').select('*').eq('id', id).single();
+                if(error) throw error;
+                resetForm();
+                document.getElementById('expertiseId').value = data.id;
+                document.getElementById('formModeTitle').innerText = "Modification";
+                document.getElementById('btnReport').classList.remove('hidden');
+                document.getElementById('btnDelete').classList.remove('hidden');
+                document.getElementById('clientName').value = data.client_nom;
+                document.getElementById('plate').value = data.immatriculation;
+                document.getElementById('model').value = data.vehicule_modele;
+                document.getElementById('km').value = data.km;
+                
+                if(data.photo_url) { globalPhotos.push(data.photo_url); renderPhoto(data.photo_url, document.getElementById('globalPhotoList'), () => globalPhotos=[]); }
+                
+                if(data.checklist) {
+                    for(const [id, info] of Object.entries(data.checklist)) {
+                        const div = document.querySelector(`.control-item[data-id="${id}"]`);
+                        if(div) {
+                            const radio = div.querySelector(`input[value="${info.status}"]`);
+                            if(radio) {
+                                radio.checked = true;
+                                handleStatusChange(radio);
+                            }
+                            div.querySelector('textarea').value = info.comment || '';
+                            if(info.status === 'ok' && (info.comment || (info.photos && info.photos.length > 0))) {
+                                div.querySelector('.details-section').classList.add('visible');
+                            }
+                            if(info.photos) { 
+                                itemPhotos[id] = info.photos; 
+                                info.photos.forEach(src => renderPhoto(src, div.querySelector('.photos-container'), () => itemPhotos[id]=itemPhotos[id].filter(u=>u!==src))); 
+                            }
+                        }
+                    }
+                }
+                document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+                document.getElementById('view-form').classList.add('active');
+                window.scrollTo(0,0);
+            } catch(e) { alert('Impossible de charger ce dossier.'); }
+        }
+
+        async function deleteExpertise() {
+            if(confirm("Supprimer ?")) {
+                const id = document.getElementById('expertiseId').value;
+                await sb.from('expertises').delete().eq('id', id);
+                showDashboard();
+            }
+        }
+
+        // ================= GESTION PHOTOS =================
+        function triggerGlobalPhoto() { currentPhotoTarget='global'; document.getElementById('cameraInput').click(); }
+        function triggerItemPhoto(btn) { currentPhotoTarget=btn.closest('.control-item').dataset.id; document.getElementById('cameraInput').click(); }
+        
+        async function handlePhotoUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const container = currentPhotoTarget === 'global' ? document.getElementById('globalPhotoList') : document.querySelector(`.control-item[data-id="${currentPhotoTarget}"] .photos-container`);
+                const l = document.createElement('div'); l.className="w-20 h-20 bg-slate-100 rounded flex items-center justify-center"; l.innerHTML='<div class="loader"></div>'; container.appendChild(l);
+                
+                try {
+                    // Compression
+                    const compressedFile = await compressImage(file, { quality: 0.6 }); 
+                    const name = `${Date.now()}_${compressedFile.name.replace(/\W/g,'_')}`;
+                    
+                    const { error } = await sb.storage.from(STORAGE_BUCKET).upload(name, compressedFile);
+                    if(error) throw error;
+                    const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(name);
+                    const url = data.publicUrl; l.remove();
+                    
+                    if(currentPhotoTarget==='global') { globalPhotos.push(url); renderPhoto(url, container, () => globalPhotos=globalPhotos.filter(u=>u!==url)); }
+                    else { if(!itemPhotos[currentPhotoTarget]) itemPhotos[currentPhotoTarget]=[]; itemPhotos[currentPhotoTarget].push(url); renderPhoto(url, container, () => itemPhotos[currentPhotoTarget]=itemPhotos[currentPhotoTarget].filter(u=>u!==url)); }
+                } catch(e) { l.remove(); alert("Erreur upload: " + e.message); }
+            } input.value = '';
+        }
+        
+        function renderPhoto(src, container, cb) {
+            const div = document.createElement('div'); div.className = "relative group w-24 h-24";
+            div.innerHTML = `<img src="${src}" class="w-full h-full object-cover rounded-xl border border-slate-200" onclick="window.open('${src}')"><button type="button" class="absolute top-0 right-0 bg-red-600 text-white p-1 rounded-bl-xl rounded-tr-xl shadow text-xs">X</button>`;
+            div.querySelector('button').onclick = (e) => { e.stopPropagation(); if(confirm('Supprimer ?')) { div.remove(); cb(); } };
+            container.appendChild(div);
+        }
+
+        // ================= RAPPORT COMPLET =================
+        function generateReport() {
+            const client = document.getElementById('clientName').value;
+            const plate = document.getElementById('plate').value;
+            const model = document.getElementById('model').value;
+            const km = document.getElementById('km').value;
+            const today = new Date().toLocaleDateString('fr-FR');
+            
+            let globalPhotosHTML = '';
+            globalPhotos.forEach(url => globalPhotosHTML += `<img src="${url}" class="w-full h-48 object-cover rounded-lg border border-slate-200">`);
+
+            let controlRows = '';
+            
+            for (const [key, section] of Object.entries(checkListConfig)) {
+                let sectionItemsHTML = '';
+                let hasItems = false;
+
+                section.items.forEach(item => {
+                    const el = document.querySelector(`.control-item[data-id="${item.id}"]`);
+                    if(!el) return;
+                    
+                    const statusOk = el.querySelector(`input[value="ok"]:checked`);
+                    const statusNok = el.querySelector(`input[value="nok"]:checked`);
+                    
+                    if(statusOk || statusNok) {
+                        hasItems = true;
+                        const isNok = !!statusNok;
+                        const statusBadge = isNok 
+                            ? `<span class="text-red-600 font-bold">DÉFAUT</span>` 
+                            : `<span class="text-green-600 font-bold">CONFORME</span>`;
+                        
+                        const comment = el.querySelector('textarea').value;
+                        const photosDiv = el.querySelector('.photos-container');
+                        let itemPhotosHTML = '';
+                        if(photosDiv) {
+                            photosDiv.querySelectorAll('img').forEach(img => {
+                                itemPhotosHTML += `<img src="${img.src}" class="w-16 h-16 object-cover rounded border border-slate-300 inline-block mr-1">`;
+                            });
+                        }
+
+                        const bgClass = isNok ? 'bg-red-50' : 'bg-white';
+                        
+                        sectionItemsHTML += `
+                        <tr class="${bgClass} border-b border-slate-200 print-break">
+                            <td class="p-2 w-1/3 align-top">
+                                <div class="font-bold text-slate-700">${item.label}</div>
+                                <div class="text-xs text-slate-500">${item.sub}</div>
+                            </td>
+                            <td class="p-2 w-1/6 align-top text-center">${statusBadge}</td>
+                            <td class="p-2 align-top">
+                                <div class="text-sm text-slate-800">${comment || '-'}</div>
+                                <div class="mt-1">${itemPhotosHTML}</div>
+                            </td>
+                        </tr>`;
+                    }
+                });
+
+                if(hasItems) {
+                    controlRows += `
+                    <tr class="bg-slate-100 border-b-2 border-slate-300">
+                        <td colspan="3" class="p-2 font-bold text-blue-900 uppercase text-sm"><i class="ph ph-${section.icon}"></i> ${section.title}</td>
+                    </tr>
+                    ${sectionItemsHTML}`;
+                }
+            }
+
+            const html = `
+            <div class="max-w-4xl mx-auto p-8 bg-white text-sm">
+                <div class="flex justify-between items-center border-b-2 border-blue-800 pb-4 mb-6">
+                    <div><h1 class="text-2xl font-bold text-blue-900">AUDIT VÉHICULE D'OCCASION</h1><p class="text-slate-500">Réf: ${plate} - ${today}</p></div>
+                    <div class="text-right"><div class="text-xl font-bold text-slate-700">APEX AUTO SERVICE</div><div class="text-sm">Inspection Complète</div></div>
+                </div>
+                
+                <div class="grid grid-cols-4 gap-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div><p class="text-xs uppercase text-slate-500 font-bold">Client</p><p class="font-bold">${client}</p></div>
+                    <div><p class="text-xs uppercase text-slate-500 font-bold">Véhicule</p><p class="font-bold">${model}</p></div>
+                    <div><p class="text-xs uppercase text-slate-500 font-bold">Plaque</p><p class="font-bold font-mono">${plate}</p></div>
+                    <div><p class="text-xs uppercase text-slate-500 font-bold">Km</p><p class="font-bold">${km}</p></div>
+                </div>
+
+                <h3 class="font-bold text-lg mb-2 text-blue-900 border-b pb-1">Détail des points de contrôle</h3>
+                <table class="w-full text-left border-collapse mb-6">
+                    <thead>
+                        <tr class="text-xs uppercase text-slate-500 border-b border-slate-300">
+                            <th class="p-2">Point de contrôle</th>
+                            <th class="p-2 text-center">État</th>
+                            <th class="p-2">Observations / Photos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${controlRows}
+                    </tbody>
+                </table>
+
+                <div class="print-newpage">
+                    <h3 class="font-bold text-lg mb-4 text-blue-900 border-b pb-1">Album Photo Global</h3>
+                    <div class="grid grid-cols-3 gap-4 mb-8">
+                        ${globalPhotosHTML || '<p class="text-slate-400 italic">Aucune photo globale.</p>'}
+                    </div>
+                </div>
+
+                <div class="print-break mt-10 pt-4 border-t-2 border-slate-300">
+                    <h3 class="font-bold text-xs mb-1 uppercase">CGV & Mentions Légales</h3>
+                    <div class="legal-text">
+                        <p><strong>Art 1 - Prestation :</strong> Inspection visuelle et auditive, obligation de moyens. Avis technique sur l'état apparent.</p>
+                        <p><strong>Art 2 - Limites :</strong> Pas de démontage. Ne couvre pas l'interne moteur/boîte ni l'électronique profonde.</p>
+                        <p><strong>Art 3 - Vices Cachés :</strong> Le Prestataire n'est pas vendeur. Garantie vices cachés incombe au vendeur (Art 1641 Code Civil).</p>
+                        <p><strong>Art 4 - Indépendance :</strong> Aide à la décision, ne remplace pas le CT. Pas de responsabilité en cas de non-vente.</p>
+                        <p><strong>Art 5 - Essai :</strong> Le Vendeur garde la garde juridique du véhicule et certifie l'assurance.</p>
+                    </div>
+                </div>
+                <div class="mt-4 text-center text-xs text-slate-400">Document généré par APEX AUTO SERVICE le ${today}</div>
+            </div>`;
+
+            const reportDiv = document.getElementById('view-report');
+            reportDiv.innerHTML = html;
+            
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            reportDiv.classList.remove('hidden');
+            
+            setTimeout(() => { 
+                window.print(); 
+                reportDiv.classList.add('hidden'); 
+                document.getElementById('view-form').classList.add('active'); 
+            }, 500);
+        }
+
+        // Helpers
+        function resetForm() {
+            document.getElementById('expertiseForm').reset();
+            document.getElementById('expertiseId').value = '';
+            document.getElementById('formModeTitle').innerText = "Nouvelle Fiche";
+            document.querySelectorAll('.details-section').forEach(s => s.classList.remove('visible'));
+            document.querySelectorAll('.manual-add-btn').forEach(b => b.classList.add('hidden'));
+            document.querySelectorAll('.control-item').forEach(c => {
+                c.classList.remove('bg-red-50', 'border-red-200');
+                c.classList.add('bg-slate-50', 'border-slate-200');
+            });
+            document.querySelectorAll('.photos-container, #globalPhotoList').forEach(c => c.innerHTML = '');
+            globalPhotos = []; itemPhotos = {};
+        }
+    </script>
+</body>
+</html>
