@@ -1,4 +1,4 @@
-<!-- VERSION: V4.5 (FIX PHOTOS MULTIPLES) - 2025-12-20 -->
+<!-- VERSION: V4.6 (CGV JURIDIQUES COMPLÈTES) - 2025-12-20 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1e3a8a">
 
-    <title>APEX AUTO SERVICE - Audit V4.5</title>
+    <title>APEX AUTO SERVICE - Audit V4.6</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -26,7 +26,7 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
             max-height: 0; 
             overflow: hidden; 
-            opacity: 0; 
+            opacity: 0; a
         }
         .details-section.visible { 
             max-height: 1500px; 
@@ -67,6 +67,8 @@
             .print-break { page-break-inside: avoid; }
             -webkit-print-color-adjust: exact; print-color-adjust: exact;
             .legal-text { font-size: 7px; line-height: 1.1; text-align: justify; color: #64748b; }
+            .legal-text p { margin-bottom: 4px; }
+            .legal-text strong { color: #334155; }
         }
     </style>
 </head>
@@ -76,7 +78,7 @@
     <header class="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-50 no-print pt-[env(safe-area-inset-top)]">
         <div class="max-w-3xl mx-auto flex justify-between items-center mt-2">
             <h1 class="text-lg font-bold flex items-center gap-2 cursor-pointer active:opacity-70" onclick="showDashboard()">
-                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO <span class="text-xs opacity-50 font-normal">v4.5</span>
+                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO <span class="text-xs opacity-50 font-normal">v4.6</span>
             </h1>
             <div class="flex gap-2">
                 <button onclick="showDashboard()" class="text-sm bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-blue-700 active:scale-95 transition">
@@ -193,7 +195,7 @@
         const STORAGE_BUCKET = 'garage';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        log("Application v4.5 active");
+        log("Application v4.6 active");
 
         // ================= COMPRESSION D'IMAGES =================
         const compressImage = async (file, { quality = 0.5, type = 'image/jpeg' } = {}) => {
@@ -736,13 +738,36 @@
                 </div>
 
                 <div class="print-break mt-10 pt-4 border-t-2 border-slate-300">
-                    <h3 class="font-bold text-xs mb-1 uppercase">CGV & Mentions Légales</h3>
+                    <h3 class="font-bold text-xs mb-1 uppercase">CONDITIONS GÉNÉRALES DE PRESTATION DE SERVICE – AUDIT TECHNIQUE AUTOMOBILE</h3>
                     <div class="legal-text">
-                        <p><strong>Art 1 - Prestation :</strong> Inspection visuelle et auditive, obligation de moyens. Avis technique sur l'état apparent.</p>
-                        <p><strong>Art 2 - Limites :</strong> Pas de démontage. Ne couvre pas l'interne moteur/boîte ni l'électronique profonde.</p>
-                        <p><strong>Art 3 - Vices Cachés :</strong> Le Prestataire n'est pas vendeur. Garantie vices cachés incombe au vendeur (Art 1641 Code Civil).</p>
-                        <p><strong>Art 4 - Indépendance :</strong> Aide à la décision, ne remplace pas le CT. Pas de responsabilité en cas de non-vente.</p>
-                        <p><strong>Art 5 - Essai :</strong> Le Vendeur garde la garde juridique du véhicule et certifie l'assurance.</p>
+                        <p><strong>PRÉAMBULE : AVERTISSEMENT LÉGAL</strong></p>
+                        <p>Le Prestataire tient à préciser qu’il n’exerce pas la profession réglementée d’Expert en Automobile au sens de l’article L.326-1 du Code de la route. La prestation fournie est un audit technique consultatif d’aide à l’achat, et non une expertise judiciaire ou contradictoire d’assurance.</p>
+                        
+                        <p><strong>ARTICLE 1 : OBJET DE LA PRESTATION ET OBLIGATION DE MOYENS</strong></p>
+                        <p>Le Prestataire s'engage à réaliser une inspection visuelle et fonctionnelle du véhicule désigné. Conformément à l’article 1231-1 du Code Civil, le Prestataire est tenu à une stricte obligation de moyens. Il met en œuvre son savoir-faire technique pour relever les anomalies visibles au moment de l’inspection, mais ne saurait garantir l’absence totale de défauts sur le véhicule. Le Client reconnaît que cette inspection ne constitue pas une garantie de fiabilité future.</p>
+                        
+                        <p><strong>ARTICLE 2 : LIMITES TECHNIQUES DE L’INTERVENTION (EXCLUSIONS)</strong></p>
+                        <p>L’inspection est réalisée sans démontage ni intrusion mécanique. En conséquence, sont formellement exclus du périmètre de responsabilité du Prestataire les éléments suivants :</p>
+                        <ul style="list-style-type: disc; margin-left: 15px;">
+                            <li>L’état interne du moteur (cylindres, pistons, segments) et de la boîte de vitesses.</li>
+                            <li>L'encrassement interne des systèmes de dépollution (FAP, EGR) non signalé par un voyant ou code défaut actif.</li>
+                            <li>Les consommables non visibles (courroie de distribution carénée, filtre à huile interne).</li>
+                            <li>Les dysfonctionnements électroniques aléatoires ou fugitifs ne se manifestant pas lors de l'essai.</li>
+                        </ul>
+                        <p>Toute réclamation portant sur un organe invisible sans démontage sera considérée comme hors périmètre contractuel.</p>
+                        
+                        <p><strong>ARTICLE 3 : EXCLUSION DE LA GARANTIE DES VICES CACHÉS</strong></p>
+                        <p>Le Prestataire n'étant ni le vendeur, ni le constructeur du véhicule, il ne peut être tenu responsable des défauts cachés. Le Client est informé que la garantie des vices cachés, définie à l'article 1641 du Code Civil, demeure à la charge exclusive du Vendeur du véhicule. Le présent rapport d'audit ne se substitue pas aux obligations légales du Vendeur, ni au Contrôle Technique obligatoire visé à l’article R.323-1 du Code de la route.</p>
+                        
+                        <p><strong>ARTICLE 4 : RESPONSABILITÉ LORS DE L’ESSAI ROUTIER</strong></p>
+                        <p>Lors de l'essai dynamique, le transfert de la garde juridique du véhicule n'est pas opéré au profit du Prestataire. Le Propriétaire/Vendeur conserve la qualité de gardien de la chose au sens de l'article 1242 du Code Civil. Le Prestataire ne saurait être tenu pour responsable :</p>
+                        <ul style="list-style-type: disc; margin-left: 15px;">
+                            <li>D'une panne mécanique fortuite survenant pendant l'essai, inhérente à l'usure ou au défaut d'entretien du véhicule.</li>
+                            <li>Des conséquences d'un défaut de conformité administrative (défaut d'assurance, carte grise non à jour) dont le Vendeur a la charge.</li>
+                        </ul>
+                        
+                        <p><strong>ARTICLE 5 : ACCEPTATION DES RISQUES PAR LE CLIENT</strong></p>
+                        <p>Le Client reconnaît expressément que l'achat d'un véhicule d'occasion comporte un aléa technique incompressible. En signant le présent document, il renonce à engager la responsabilité du Prestataire pour tout défaut qui n'était pas manifestement visible ou audible lors de l'examen statique et dynamique, ou qui serait apparu postérieurement à la remise du rapport.</p>
                     </div>
                 </div>
                 <div class="mt-4 text-center text-xs text-slate-400">Document généré par APEX AUTO SERVICE le ${today}</div>
