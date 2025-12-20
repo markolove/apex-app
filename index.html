@@ -28,7 +28,7 @@
             opacity: 0; 
         }
         .details-section.visible { 
-            max-height: 1200px; 
+            max-height: 1500px; 
             opacity: 1; 
             margin-top: 0.5rem; 
             padding-top: 0.5rem; 
@@ -112,9 +112,9 @@
                         <i class="ph ph-identification-card text-blue-600 text-xl"></i> Infos Véhicule
                     </h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Client</label><input type="text" id="clientName" required class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Nom Prénom"></div>
-                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Immatriculation</label><input type="text" id="plate" required autocapitalize="characters" class="w-full p-3.5 border border-slate-300 rounded-xl uppercase font-mono bg-slate-50 focus:border-blue-500 outline-none" placeholder="XX-000-XX"></div>
-                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Modèle</label><input type="text" id="model" required class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Ex: Audi A3"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Client</label><input type="text" id="clientName" class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Nom Prénom"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Immatriculation</label><input type="text" id="plate" autocapitalize="characters" class="w-full p-3.5 border border-slate-300 rounded-xl uppercase font-mono bg-slate-50 focus:border-blue-500 outline-none" placeholder="XX-000-XX"></div>
+                        <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Modèle</label><input type="text" id="model" class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Ex: Audi A3"></div>
                         <div><label class="text-xs font-bold text-slate-500 uppercase ml-1">Kilométrage</label><input type="number" id="km" inputmode="numeric" class="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 outline-none" placeholder="Ex: 150000"></div>
                     </div>
                 </section>
@@ -159,17 +159,20 @@
         const STORAGE_BUCKET = 'garage';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // ================= COMPRESSION D'IMAGES =================
-        const compressImage = async (file, { quality = 0.6, type = 'image/jpeg' } = {}) => {
+        // ================= COMPRESSION D'IMAGES (OPTIMISÉ RAM) =================
+        const compressImage = async (file, { quality = 0.5, type = 'image/jpeg' } = {}) => {
             return new Promise((resolve, reject) => {
                 const image = new Image();
-                image.src = URL.createObjectURL(file);
+                // 1. Création URL
+                const src = URL.createObjectURL(file);
+                image.src = src;
+                
                 image.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
-                    // Max 1280px pour bonne lisibilité sans poids excessif
-                    const maxWidth = 1280;
+                    // 2. Réduction résolution (1024px max est largement suffisant et 30% plus léger en RAM que 1280)
+                    const maxWidth = 1024; 
                     let width = image.width;
                     let height = image.height;
 
@@ -182,7 +185,14 @@
                     canvas.height = height;
                     ctx.drawImage(image, 0, 0, width, height);
 
+                    // 3. Libération immédiate de la mémoire source
+                    URL.revokeObjectURL(src);
+
                     canvas.toBlob((blob) => {
+                        // 4. Nettoyage Canvas
+                        canvas.width = 0; 
+                        canvas.height = 0;
+                        
                         if (!blob) { reject(new Error('Erreur compression')); return; }
                         const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
                             type: type,
@@ -191,7 +201,10 @@
                         resolve(newFile);
                     }, type, quality);
                 };
-                image.onerror = (error) => reject(error);
+                image.onerror = (error) => {
+                    URL.revokeObjectURL(src); // Sécurité en cas d'erreur
+                    reject(error);
+                }
             });
         };
 
@@ -250,7 +263,6 @@
             ]}
         };
 
-        // Données globales
         let folders = [];
         let globalPhotos = [];
         let itemPhotos = {};
@@ -261,7 +273,6 @@
             loadFolders();
         });
 
-        // ================= GÉNÉRATION UI =================
         function generateFormFields() {
             const container = document.getElementById('form-sections-container');
             container.innerHTML = '';
@@ -277,14 +288,11 @@
                 section.items.forEach(item => {
                     html += `
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 control-item" data-id="${item.id}" data-label="${item.label}">
-                        
-                        <!-- Ligne Principale -->
                         <div class="flex justify-between items-start mb-1">
                             <div class="flex-1 pr-2">
                                 <span class="font-bold text-slate-700 block text-sm sm:text-base">${item.label}</span>
                                 <span class="text-xs text-slate-500 block leading-tight mt-0.5">${item.sub}</span>
                             </div>
-                            
                             <div class="flex gap-2 shrink-0">
                                 <label class="cursor-pointer relative group">
                                     <input type="radio" name="${item.id}" value="ok" class="hidden peer" onchange="handleStatusChange(this)">
@@ -292,7 +300,6 @@
                                         <i class="ph ph-check text-xl font-bold"></i>
                                     </div>
                                 </label>
-                                
                                 <label class="cursor-pointer relative group">
                                     <input type="radio" name="${item.id}" value="nok" class="hidden peer" onchange="handleStatusChange(this)">
                                     <div class="w-10 h-10 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-300 peer-checked:bg-red-600 peer-checked:text-white peer-checked:border-red-600 transition shadow-sm">
@@ -301,13 +308,11 @@
                                 </label>
                             </div>
                         </div>
-
                         <div class="manual-add-btn text-right hidden">
                             <button type="button" onclick="toggleDetails(this)" class="text-xs text-blue-600 font-medium hover:underline flex items-center justify-end gap-1 ml-auto py-1">
                                 <i class="ph ph-note-pencil"></i> Ajouter note / photo
                             </button>
                         </div>
-
                         <div class="details-section">
                             <div class="bg-white p-3 rounded-lg border border-slate-200 mt-2">
                                 <textarea class="w-full text-sm p-3 border border-slate-200 rounded-lg bg-slate-50 mb-2 focus:ring-2 focus:ring-blue-200 outline-none transition" rows="2" placeholder="Commentaire / Observation..."></textarea>
@@ -317,7 +322,6 @@
                                 </button>
                             </div>
                         </div>
-
                     </div>`;
                 });
                 html += `</div></section>`;
@@ -325,7 +329,6 @@
             }
         }
 
-        // ================= LOGIQUE UI =================
         function handleStatusChange(radio) {
             const container = radio.closest('.control-item');
             const detailsSection = container.querySelector('.details-section');
@@ -343,7 +346,7 @@
                 manualBtn.classList.remove('hidden');
                 container.classList.remove('border-red-200', 'bg-red-50');
                 container.classList.add('bg-slate-50', 'border-slate-200');
-                textArea.placeholder = "Observation positive (ex: Pneus neufs)...";
+                textArea.placeholder = "Observation positive...";
             }
         }
 
@@ -352,7 +355,6 @@
             section.classList.toggle('visible');
         }
 
-        // ================= NAVIGATION =================
         function showDashboard() {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById('view-dashboard').classList.add('active');
@@ -368,7 +370,6 @@
             window.scrollTo(0,0);
         }
 
-        // ================= DATA (CRUD) =================
         async function loadFolders() {
             const listEl = document.getElementById('foldersList');
             listEl.innerHTML = '<div class="flex justify-center py-10"><div class="loader"></div></div>';
@@ -399,9 +400,23 @@
         }
 
         async function submitExpertise() {
-            const btn = document.getElementById('btnSave'); btn.disabled = true; 
+            // VERIF OBLIGATOIRE MANUELLE
+            const client = document.getElementById('clientName').value.trim();
+            const plate = document.getElementById('plate').value.trim();
+            const model = document.getElementById('model').value.trim();
+            const km = document.getElementById('km').value.trim();
+
+            if (!client || !plate || !model || !km) {
+                alert("⚠️ Attention : Veuillez remplir les 4 champs en haut (Client, Immatriculation, Modèle, Km).");
+                document.getElementById('clientName').scrollIntoView({behavior: "smooth"});
+                return; 
+            }
+
+            const btn = document.getElementById('btnSave'); 
+            btn.disabled = true; 
             const originalText = document.getElementById('saveBtnText').innerText;
-            document.getElementById('saveBtnText').innerText = "Sauvegarde...";
+            document.getElementById('saveBtnText').innerText = "Sauvegarde en cours...";
+            
             try {
                 const checklistData = {};
                 document.querySelectorAll('.control-item').forEach(div => {
@@ -416,20 +431,30 @@
                     }
                 });
                 const payload = {
-                    client_nom: document.getElementById('clientName').value,
-                    immatriculation: document.getElementById('plate').value,
-                    vehicule_modele: document.getElementById('model').value,
-                    km: document.getElementById('km').value,
+                    client_nom: client,
+                    immatriculation: plate,
+                    vehicule_modele: model,
+                    km: km,
                     checklist: checklistData,
                     photo_url: globalPhotos[0] || null
                 };
                 const id = document.getElementById('expertiseId').value;
-                const { error } = id ? await sb.from('expertises').update(payload).eq('id', id) : await sb.from('expertises').insert([payload]);
+                
+                // Timeout de sécurité réseau (10s)
+                const savePromise = id ? sb.from('expertises').update(payload).eq('id', id) : sb.from('expertises').insert([payload]);
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Temps d\'attente dépassé. Vérifiez votre connexion.')), 15000));
+                
+                const { error } = await Promise.race([savePromise, timeoutPromise]);
+
                 if(error) throw error;
                 btn.classList.remove('bg-blue-900'); btn.classList.add('bg-green-600');
                 document.getElementById('saveBtnText').innerText = "Succès !";
                 setTimeout(() => { btn.classList.add('bg-blue-900'); btn.classList.remove('bg-green-600'); document.getElementById('saveBtnText').innerText = originalText; showDashboard(); }, 1000);
-            } catch (e) { alert("Erreur: " + e.message); btn.disabled = false; document.getElementById('saveBtnText').innerText = originalText; } 
+            } catch (e) { 
+                alert("Erreur technique : " + e.message); 
+                btn.disabled = false; 
+                document.getElementById('saveBtnText').innerText = originalText; 
+            } 
         }
 
         async function loadDetails(id) {
@@ -493,8 +518,7 @@
                 const l = document.createElement('div'); l.className="w-20 h-20 bg-slate-100 rounded flex items-center justify-center"; l.innerHTML='<div class="loader"></div>'; container.appendChild(l);
                 
                 try {
-                    // Compression
-                    const compressedFile = await compressImage(file, { quality: 0.6 }); 
+                    const compressedFile = await compressImage(file, { quality: 0.5 }); 
                     const name = `${Date.now()}_${compressedFile.name.replace(/\W/g,'_')}`;
                     
                     const { error } = await sb.storage.from(STORAGE_BUCKET).upload(name, compressedFile);
@@ -659,3 +683,5 @@
     </script>
 </body>
 </html>
+
+
