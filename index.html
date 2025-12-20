@@ -1,3 +1,4 @@
+<!-- VERSION: V4.4 (DEBUG MODE) - 2025-12-20 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1e3a8a">
 
-    <title>APEX AUTO SERVICE - Audit</title>
+    <title>APEX AUTO SERVICE - Audit V4.4</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -44,10 +45,24 @@
 
         input, select, textarea { font-size: 16px !important; }
 
+        /* Console de log pour debug sur mobile */
+        #console-log {
+            display: none;
+            background: #1e293b;
+            color: #4ade80;
+            font-family: monospace;
+            font-size: 10px;
+            padding: 10px;
+            border-top: 2px solid #334155;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
         /* --- IMPRESSION (RAPPORT) --- */
         @media print {
             body { background: white; padding: 0; }
-            header, .no-print, #view-dashboard, #view-form { display: none !important; }
+            header, .no-print, #view-dashboard, #view-form, #console-log, #debug-toggle { display: none !important; }
             #view-report { display: block !important; padding: 0; }
             .print-newpage { page-break-before: always; }
             .print-break { page-break-inside: avoid; }
@@ -62,7 +77,7 @@
     <header class="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-50 no-print pt-[env(safe-area-inset-top)]">
         <div class="max-w-3xl mx-auto flex justify-between items-center mt-2">
             <h1 class="text-lg font-bold flex items-center gap-2 cursor-pointer active:opacity-70" onclick="showDashboard()">
-                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO
+                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO <span class="text-xs opacity-50 font-normal">v4.4</span>
             </h1>
             <div class="flex gap-2">
                 <button onclick="showDashboard()" class="text-sm bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-blue-700 active:scale-95 transition">
@@ -132,6 +147,10 @@
                     </button>
                 </section>
 
+                <!-- Zone de Logs (Cachée par défaut) -->
+                <div id="console-log"></div>
+                <button type="button" id="debug-toggle" onclick="toggleLogs()" class="no-print w-full text-center text-xs text-slate-400 mb-4 underline">Voir les logs techniques (Debug)</button>
+
                 <!-- Actions Bas de page -->
                 <section class="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] md:relative md:bg-transparent md:border-none md:shadow-none md:p-0">
                     <div class="max-w-3xl mx-auto flex flex-col gap-2">
@@ -153,25 +172,44 @@
     <input type="file" id="cameraInput" accept="image/*" class="hidden" onchange="handlePhotoUpload(this)">
 
     <script>
+        // ================= SYSTEME DE LOGS =================
+        function log(msg) {
+            const consoleDiv = document.getElementById('console-log');
+            const time = new Date().toLocaleTimeString();
+            consoleDiv.innerHTML += `<div>[${time}] ${msg}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(msg);
+        }
+        
+        function toggleLogs() {
+            const el = document.getElementById('console-log');
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // Capture des erreurs globales
+        window.onerror = function(message, source, lineno, colno, error) {
+            log(`❌ ERREUR CRITIQUE: ${message} (Ligne ${lineno})`);
+            alert(`Erreur détectée : ${message}. Regardez les logs en bas de page.`);
+        };
+
         // ================= CONFIGURATION =================
         const SUPABASE_URL = 'https://fafxadjkjfrsjiacnjuj.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_EJE62_dCVr97qb7JbaB9VQ_svEdaG0-'; 
         const STORAGE_BUCKET = 'garage';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // ================= COMPRESSION D'IMAGES (OPTIMISÉ RAM) =================
+        log("Application démarrée v4.4");
+
+        // ================= COMPRESSION D'IMAGES =================
         const compressImage = async (file, { quality = 0.5, type = 'image/jpeg' } = {}) => {
             return new Promise((resolve, reject) => {
                 const image = new Image();
-                // 1. Création URL
                 const src = URL.createObjectURL(file);
                 image.src = src;
                 
                 image.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    
-                    // 2. Réduction résolution (1024px max est largement suffisant et 30% plus léger en RAM que 1280)
                     const maxWidth = 1024; 
                     let width = image.width;
                     let height = image.height;
@@ -184,27 +222,16 @@
                     canvas.width = width;
                     canvas.height = height;
                     ctx.drawImage(image, 0, 0, width, height);
-
-                    // 3. Libération immédiate de la mémoire source
                     URL.revokeObjectURL(src);
 
                     canvas.toBlob((blob) => {
-                        // 4. Nettoyage Canvas
-                        canvas.width = 0; 
-                        canvas.height = 0;
-                        
+                        canvas.width = 0; canvas.height = 0;
                         if (!blob) { reject(new Error('Erreur compression')); return; }
-                        const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
-                            type: type,
-                            lastModified: Date.now(),
-                        });
+                        const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: type, lastModified: Date.now() });
                         resolve(newFile);
                     }, type, quality);
                 };
-                image.onerror = (error) => {
-                    URL.revokeObjectURL(src); // Sécurité en cas d'erreur
-                    reject(error);
-                }
+                image.onerror = (error) => { URL.revokeObjectURL(src); reject(error); }
             });
         };
 
@@ -274,6 +301,7 @@
         });
 
         function generateFormFields() {
+            log("Génération du formulaire...");
             const container = document.getElementById('form-sections-container');
             container.innerHTML = '';
             
@@ -371,12 +399,20 @@
         }
 
         async function loadFolders() {
+            log("Chargement dossiers...");
             const listEl = document.getElementById('foldersList');
             listEl.innerHTML = '<div class="flex justify-center py-10"><div class="loader"></div></div>';
             try {
                 const { data, error } = await sb.from('expertises').select('*').order('created_at', { ascending: false });
-                if (!error) { folders = data; updateDashboard(); } else { throw error; }
-            } catch(e) { listEl.innerHTML = `<p class="text-center text-red-500 py-10">Erreur réseau.</p>`; }
+                if (!error) { 
+                    folders = data; 
+                    log(`${folders.length} dossiers chargés`);
+                    updateDashboard(); 
+                } else { throw error; }
+            } catch(e) { 
+                log("Erreur chargement: " + e.message);
+                listEl.innerHTML = `<p class="text-center text-red-500 py-10">Erreur réseau.</p>`; 
+            }
         }
 
         function updateDashboard() {
@@ -400,36 +436,49 @@
         }
 
         async function submitExpertise() {
-            // VERIF OBLIGATOIRE MANUELLE
+            log("--- Début Sauvegarde ---");
+            const btn = document.getElementById('btnSave'); 
+            const originalText = document.getElementById('saveBtnText').innerText;
+            
+            // 1. Validation Champs
             const client = document.getElementById('clientName').value.trim();
             const plate = document.getElementById('plate').value.trim();
             const model = document.getElementById('model').value.trim();
             const km = document.getElementById('km').value.trim();
 
             if (!client || !plate || !model || !km) {
+                log("Validation échouée: champs manquants");
                 alert("⚠️ Attention : Veuillez remplir les 4 champs en haut (Client, Immatriculation, Modèle, Km).");
                 document.getElementById('clientName').scrollIntoView({behavior: "smooth"});
                 return; 
             }
 
-            const btn = document.getElementById('btnSave'); 
+            // 2. Blocage bouton
             btn.disabled = true; 
-            const originalText = document.getElementById('saveBtnText').innerText;
             document.getElementById('saveBtnText').innerText = "Sauvegarde en cours...";
             
             try {
+                // 3. Construction Données
+                log("Construction des données...");
                 const checklistData = {};
                 document.querySelectorAll('.control-item').forEach(div => {
-                    const id = div.dataset.id;
-                    const checked = div.querySelector(`input[name="${id}"]:checked`);
-                    if(checked) {
-                        checklistData[id] = { 
-                            status: checked.value, 
-                            comment: div.querySelector('textarea').value, 
-                            photos: itemPhotos[id] || [] 
-                        };
+                    try {
+                        const id = div.dataset.id;
+                        const checked = div.querySelector(`input[name="${id}"]:checked`);
+                        if(checked) {
+                            checklistData[id] = { 
+                                status: checked.value, 
+                                comment: div.querySelector('textarea').value, 
+                                photos: itemPhotos[id] || [] 
+                            };
+                        }
+                    } catch(errItem) {
+                        log("Erreur sur item: " + div.dataset.id);
                     }
                 });
+
+                log(`Items cochés: ${Object.keys(checklistData).length}`);
+
                 const payload = {
                     client_nom: client,
                     immatriculation: plate,
@@ -438,19 +487,36 @@
                     checklist: checklistData,
                     photo_url: globalPhotos[0] || null
                 };
+
                 const id = document.getElementById('expertiseId').value;
-                
-                // Timeout de sécurité réseau (10s)
+                log(id ? `Mise à jour ID: ${id}` : "Création nouveau dossier");
+
+                // 4. Envoi Supabase
                 const savePromise = id ? sb.from('expertises').update(payload).eq('id', id) : sb.from('expertises').insert([payload]);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Temps d\'attente dépassé. Vérifiez votre connexion.')), 15000));
+                
+                // Timeout sécurité
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Réseau (15s)')), 15000));
                 
                 const { error } = await Promise.race([savePromise, timeoutPromise]);
 
-                if(error) throw error;
+                if(error) {
+                    log("Erreur Supabase: " + JSON.stringify(error));
+                    throw error;
+                }
+
+                log("Sauvegarde OK !");
                 btn.classList.remove('bg-blue-900'); btn.classList.add('bg-green-600');
                 document.getElementById('saveBtnText').innerText = "Succès !";
-                setTimeout(() => { btn.classList.add('bg-blue-900'); btn.classList.remove('bg-green-600'); document.getElementById('saveBtnText').innerText = originalText; showDashboard(); }, 1000);
+                
+                setTimeout(() => { 
+                    btn.classList.add('bg-blue-900'); btn.classList.remove('bg-green-600'); 
+                    document.getElementById('saveBtnText').innerText = originalText; 
+                    btn.disabled = false; // IMPORTANT: Réactiver le bouton
+                    showDashboard(); 
+                }, 1000);
+
             } catch (e) { 
+                log("EXCEPTION: " + e.message);
                 alert("Erreur technique : " + e.message); 
                 btn.disabled = false; 
                 document.getElementById('saveBtnText').innerText = originalText; 
@@ -458,6 +524,7 @@
         }
 
         async function loadDetails(id) {
+            log("Chargement détail: " + id);
             try {
                 const { data, error } = await sb.from('expertises').select('*').eq('id', id).single();
                 if(error) throw error;
@@ -496,7 +563,7 @@
                 document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
                 document.getElementById('view-form').classList.add('active');
                 window.scrollTo(0,0);
-            } catch(e) { alert('Impossible de charger ce dossier.'); }
+            } catch(e) { log("Erreur loadDetails: " + e.message); alert('Impossible de charger ce dossier.'); }
         }
 
         async function deleteExpertise() {
@@ -512,6 +579,7 @@
         function triggerItemPhoto(btn) { currentPhotoTarget=btn.closest('.control-item').dataset.id; document.getElementById('cameraInput').click(); }
         
         async function handlePhotoUpload(input) {
+            log("Upload photo démarré...");
             if (input.files && input.files[0]) {
                 const file = input.files[0];
                 const container = currentPhotoTarget === 'global' ? document.getElementById('globalPhotoList') : document.querySelector(`.control-item[data-id="${currentPhotoTarget}"] .photos-container`);
@@ -520,15 +588,17 @@
                 try {
                     const compressedFile = await compressImage(file, { quality: 0.5 }); 
                     const name = `${Date.now()}_${compressedFile.name.replace(/\W/g,'_')}`;
+                    log("Fichier compressé, envoi Supabase...");
                     
                     const { error } = await sb.storage.from(STORAGE_BUCKET).upload(name, compressedFile);
                     if(error) throw error;
                     const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(name);
                     const url = data.publicUrl; l.remove();
+                    log("Upload OK: " + url);
                     
                     if(currentPhotoTarget==='global') { globalPhotos.push(url); renderPhoto(url, container, () => globalPhotos=globalPhotos.filter(u=>u!==url)); }
                     else { if(!itemPhotos[currentPhotoTarget]) itemPhotos[currentPhotoTarget]=[]; itemPhotos[currentPhotoTarget].push(url); renderPhoto(url, container, () => itemPhotos[currentPhotoTarget]=itemPhotos[currentPhotoTarget].filter(u=>u!==url)); }
-                } catch(e) { l.remove(); alert("Erreur upload: " + e.message); }
+                } catch(e) { l.remove(); log("Erreur upload: " + e.message); alert("Erreur upload: " + e.message); }
             } input.value = '';
         }
         
