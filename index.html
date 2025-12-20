@@ -1,4 +1,4 @@
-<!-- VERSION: V4.4 (DEBUG MODE) - 2025-12-20 -->
+<!-- VERSION: V4.5 (FIX PHOTOS MULTIPLES) - 2025-12-20 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1e3a8a">
 
-    <title>APEX AUTO SERVICE - Audit V4.4</title>
+    <title>APEX AUTO SERVICE - Audit V4.5</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -45,7 +45,6 @@
 
         input, select, textarea { font-size: 16px !important; }
 
-        /* Console de log pour debug sur mobile */
         #console-log {
             display: none;
             background: #1e293b;
@@ -77,7 +76,7 @@
     <header class="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-50 no-print pt-[env(safe-area-inset-top)]">
         <div class="max-w-3xl mx-auto flex justify-between items-center mt-2">
             <h1 class="text-lg font-bold flex items-center gap-2 cursor-pointer active:opacity-70" onclick="showDashboard()">
-                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO <span class="text-xs opacity-50 font-normal">v4.4</span>
+                <i class="ph ph-car-profile text-2xl text-blue-400"></i> APEX AUTO <span class="text-xs opacity-50 font-normal">v4.5</span>
             </h1>
             <div class="flex gap-2">
                 <button onclick="showDashboard()" class="text-sm bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg flex items-center gap-1 border border-blue-700 active:scale-95 transition">
@@ -147,9 +146,9 @@
                     </button>
                 </section>
 
-                <!-- Zone de Logs (Cachée par défaut) -->
+                <!-- Zone de Logs -->
                 <div id="console-log"></div>
-                <button type="button" id="debug-toggle" onclick="toggleLogs()" class="no-print w-full text-center text-xs text-slate-400 mb-4 underline">Voir les logs techniques (Debug)</button>
+                <button type="button" id="debug-toggle" onclick="toggleLogs()" class="no-print w-full text-center text-xs text-slate-400 mb-4 underline">Logs (Debug)</button>
 
                 <!-- Actions Bas de page -->
                 <section class="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] md:relative md:bg-transparent md:border-none md:shadow-none md:p-0">
@@ -180,16 +179,12 @@
             consoleDiv.scrollTop = consoleDiv.scrollHeight;
             console.log(msg);
         }
-        
         function toggleLogs() {
             const el = document.getElementById('console-log');
             el.style.display = el.style.display === 'block' ? 'none' : 'block';
         }
-
-        // Capture des erreurs globales
         window.onerror = function(message, source, lineno, colno, error) {
             log(`❌ ERREUR CRITIQUE: ${message} (Ligne ${lineno})`);
-            alert(`Erreur détectée : ${message}. Regardez les logs en bas de page.`);
         };
 
         // ================= CONFIGURATION =================
@@ -198,7 +193,7 @@
         const STORAGE_BUCKET = 'garage';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        log("Application démarrée v4.4");
+        log("Application v4.5 active");
 
         // ================= COMPRESSION D'IMAGES =================
         const compressImage = async (file, { quality = 0.5, type = 'image/jpeg' } = {}) => {
@@ -477,6 +472,11 @@
                     }
                 });
 
+                // --- FIX PHOTOS MULTIPLES ---
+                // On stocke toutes les photos dans un champ spécial 'global_album' du JSON
+                // pour contourner la limite du champ unique 'photo_url'
+                checklistData['_global_photos'] = globalPhotos;
+
                 log(`Items cochés: ${Object.keys(checklistData).length}`);
 
                 const payload = {
@@ -485,7 +485,8 @@
                     vehicule_modele: model,
                     km: km,
                     checklist: checklistData,
-                    photo_url: globalPhotos[0] || null
+                    // On garde la 1ère photo comme "couverture" pour le tableau de bord
+                    photo_url: globalPhotos.length > 0 ? globalPhotos[0] : null
                 };
 
                 const id = document.getElementById('expertiseId').value;
@@ -538,10 +539,34 @@
                 document.getElementById('model').value = data.vehicule_modele;
                 document.getElementById('km').value = data.km;
                 
-                if(data.photo_url) { globalPhotos.push(data.photo_url); renderPhoto(data.photo_url, document.getElementById('globalPhotoList'), () => globalPhotos=[]); }
+                // --- FIX RESTAURATION PHOTOS MULTIPLES ---
+                // On vide d'abord
+                globalPhotos = [];
+                const galleryContainer = document.getElementById('globalPhotoList');
+                
+                // Priorité 1: L'album complet stocké dans le JSON checklist
+                if (data.checklist && data.checklist._global_photos && Array.isArray(data.checklist._global_photos)) {
+                    log("Restauration album complet (" + data.checklist._global_photos.length + " photos)");
+                    globalPhotos = data.checklist._global_photos;
+                } 
+                // Priorité 2: La photo unique (ancienne version)
+                else if(data.photo_url) {
+                    log("Restauration photo unique (ancienne version)");
+                    globalPhotos = [data.photo_url]; 
+                }
+
+                // Affichage
+                globalPhotos.forEach(url => {
+                    renderPhoto(url, galleryContainer, () => {
+                        globalPhotos = globalPhotos.filter(u => u !== url);
+                    });
+                });
                 
                 if(data.checklist) {
                     for(const [id, info] of Object.entries(data.checklist)) {
+                        // On ignore la clé spéciale _global_photos
+                        if(id === '_global_photos') continue;
+
                         const div = document.querySelector(`.control-item[data-id="${id}"]`);
                         if(div) {
                             const radio = div.querySelector(`input[value="${info.status}"]`);
@@ -753,5 +778,3 @@
     </script>
 </body>
 </html>
-
-
